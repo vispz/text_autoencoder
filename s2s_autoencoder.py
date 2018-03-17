@@ -47,7 +47,7 @@ import torch.autograd as ag
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import torch.optim.lr_scheduler as lr_scheduler
+# import torch.optim.lr_scheduler as lr_scheduler
 import torch.nn.utils.rnn as rnn_utils
 
 import encoder
@@ -411,10 +411,10 @@ def _compute_grad_by_wt(model):
     for p in model.parameters():
         if p is None:
             continue
-        p_data, p_grad = p.data.abs().numpy(), p.grad.data.abs().numpy()
+        p_data, p_grad = p.data.abs(), p.grad.data.abs()
         rat = (p_grad / p_data)
         rat[p_grad==0.] = 0.
-        grad_rats.extend(rat.ravel().tolist())
+        grad_rats.extend(rat.view(-1))
     return (np.mean(grad_rats), np.std(grad_rats))
 
 
@@ -485,4 +485,4 @@ def compute_accuracy(softmaxes, true_ixs):
     true_ixs: Variable (batch_sz,)
     """
     _, predicted = tc.max(softmaxes, dim=1)
-    return (predicted == true_ixs).data.numpy().mean()
+    return (predicted == true_ixs).type(tc.DoubleTensor).mean()

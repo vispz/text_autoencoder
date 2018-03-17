@@ -133,7 +133,7 @@ class DecoderRNN(nn.Module):
         batch_sz = input_embed.size()[0]
         # The first word is not generated but is <SOS>
         gen_seq_len = max_len - 1
-        hidden = (enc_hidden.h, enc_hidden.c)
+        hidden = (enc_hidden.h.unsqueeze(0), enc_hidden.c.unsqueeze(0))
         # Dim -> (batch_size, 1, hidden_sz)
         enc_h_3d = enc_hidden.h.unsqueeze(dim=1)
         # seq_len*[(batch, vocab_sz)]
@@ -150,10 +150,8 @@ class DecoderRNN(nn.Module):
 
         for i in xrange(1, max_len):
             # dim -> (batch_sz, seq=1, embed_sz+hidden_sz)
-            lstm_input = tc.cat(
-                (input_embed, enc_h_3d),
-                dim=2,
-            )
+            # args -> [list of tensors], dimension
+            lstm_input = tc.cat((input_embed, enc_h_3d), dim=2)
             #log.info('lstm_input.size: ', lstm_input.size())
             # output->(batch, seq_len=1, hidden_size)
             output, hidden = lstm(lstm_input, hidden)
@@ -222,7 +220,7 @@ def _ixs2embed_for_rnn(ixs, embedding):
         # dim -> (batch_sz, 1)
         ix_var = ixs.unsqueeze(dim=1)
     else:
-        ix_var = mu.CudableVariable(
+        ix_var = mu.cudable_variable(
             # dim -> (batch_sz, 1)
             tc.LongTensor(ixs).unsqueeze(dim=1),
             requires_grad=False,

@@ -19,13 +19,6 @@ LstmHidden = namedtuple('LstmHidden', ('h', 'c'))
 BatchSentIxs = namedtuple('BatchSentIxs', ['seqs', 'lengths'])
 
 
-class CudableVariable(ag.Variable):
-    def __init__(self, data, *args, **kwargs):
-        if IS_CUDA:
-            data = data.cuda()
-        super(CudableVariable, self).__init__(data, *args, **kwargs)
-
-
 class SentDataset(tc_data_utils.Dataset):
 
     def __init__(self, train_sent_df, dev_sent_df):
@@ -48,6 +41,14 @@ class SentDataset(tc_data_utils.Dataset):
         }
 
 
+def cudable_variable(*args, **kwargs):
+    var = ag.Variable(*args, **kwargs)
+    if IS_CUDA:
+        return var.cuda()
+    else:
+        return var
+
+
 def dataloader_collate_fn(batch):
     batch_sz = len(batch)
     cltd_batch = {
@@ -65,7 +66,8 @@ def dataloader_collate_fn(batch):
 
 
 def to_dataloader(
-        train_sent_df, dev_sent_df, batch_size=4, num_workers=4):
+        train_sent_df, dev_sent_df, batch_size=4, num_workers=4,
+        drop_last=False, **kwargs):
     return tc_data_utils.DataLoader(
         SentDataset(
             train_sent_df=train_sent_df,
@@ -75,6 +77,7 @@ def to_dataloader(
         shuffle=True,
         num_workers=num_workers,
         collate_fn=dataloader_collate_fn,
+        **kwargs
     )
 
 
@@ -94,7 +97,7 @@ def seqs2var(seqs, lengths):
     #    sentence length
     lengths, seqs = zip(*sorted(zip(lengths, seqs), reverse=True))
     return BatchSentIxs(
-        seqs=CudableVariable(tc.LongTensor(seqs), requires_grad=False),
+        seqs=cudable_variable(tc.LongTensor(seqs), requires_grad=False),
         # unpadded sentence lengths
         lengths=lengths,
     )
@@ -113,7 +116,7 @@ def sents2var(sents, w2ix=None, max_sent_len=None):
         max_sent_len=max_sent_len
     )
     return BatchSentIxs(
-        seqs=CudableVariable(
+        seqs=cudable_variable(
             tc.LongTensor(tokens_list),
             requires_grad=False,
         ),

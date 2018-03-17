@@ -91,7 +91,6 @@ class EncoderRNN(nn.Module):
             batch_first=True,
         )
         hidden = self.init_hidden(batch_size=batch_size)
-
         # Apply LSTM
         output, hidden = self.lstm(packed_embeds, hidden)
         output, lengths = rnn_utils.pad_packed_sequence(
@@ -115,13 +114,17 @@ class EncoderRNN(nn.Module):
         )
 
     def init_hidden(self, batch_size):
-        dims = (self.num_layers*(self.bidirectional+1),
-                batch_size, self.hidden_dim)
+        num_directions = self.bidirectional + 1
+        dims = (
+            self.num_layers * num_directions,
+            batch_size,
+            self.hidden_dim,
+        )
         return (
-            # Cell h_0 (num_layers * num_directions, batch, hidden_size)
-            mu.CudableVariable(tc.zeros(*dims), requires_grad=True),
+            # Cell h_0 (batch, num_layers * num_directions, hidden_size)
+            mu.cudable_variable(tc.zeros(*dims), requires_grad=True),
             # Hidden c_0 (num_layers * num_directions, batch, hidden_size)
-            mu.CudableVariable(tc.zeros(*dims), requires_grad=True),
+            mu.cudable_variable(tc.zeros(*dims), requires_grad=True),
         )
 
 
@@ -148,6 +151,6 @@ def pull_last_hidden(hidden, num_layers, num_dir):
 def _pull_last_hidden_helper(h, num_layers, num_dir):
     _, batch_size, hidden_dim = h.size()
     return h[(num_layers-1)*num_dir:].transpose(
-        dim1=0,
-        dim2=1,
+        dim0=0,
+        dim1=1,
     ).resize(batch_size, num_dir*hidden_dim)

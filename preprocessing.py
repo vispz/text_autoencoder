@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import codecs
 import logging
-import simplejson as json
+import json
 
 import matplotlib.pyplot as plt
 import numpy as np

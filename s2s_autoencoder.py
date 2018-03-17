@@ -422,16 +422,17 @@ def s2s_encode_sentences(sents, encoder_fwd_func, sents2var_func):
     last_layer = encoder_fwd_func(
         sents=sents2var_func(sents=sents),
     ).h_last_layer
-    return tc.cat((last_layer.h, last_layer.c), dim=1)
+    return last_layer#tc.cat((last_layer.h, last_layer.c), dim=1)
 
 
 def s2s_decode_sentences(decoder_fwd_func, enc_hiddens, hidden_dim):
+    # lasy_layer = mu.LstmHidden(
+    #     # This is how it is trained, so this is okay.
+    #     h=enc_hiddens[:,:hidden_dim],
+    #     c=enc_hiddens[:,hidden_dim:],
+    # )
     return decoder_fwd_func(
-        enc_hidden=mu.LstmHidden(
-            # This is how it is trained, so this is okay.
-            h=enc_hiddens[:,:hidden_dim],
-            c=enc_hiddens[:,hidden_dim:],
-        ),
+        enc_hidden=enc_hiddens,
         true_sents=None,
         teacher_forcing=None,
         is_training=False,

@@ -154,6 +154,8 @@ class DecoderRNN(nn.Module):
             lstm_input = tc.cat((input_embed, enc_h_3d), dim=2)
             #log.info('lstm_input.size: ', lstm_input.size())
             # output->(batch, seq_len=1, hidden_size)
+            #print 'lstm_input', lstm_input
+            #print 'hidden', hidden
             output, hidden = lstm(lstm_input, hidden)
             #log.info('output.size: ', output.size(), 'hidden[0].size(): ', hidden[0].size())
             # dim -> (batch_size, vocab_size)

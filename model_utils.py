@@ -137,13 +137,14 @@ def _sents2ixs(sents, w2ix, max_sent_len):
     #    [(4, [0, 25, 42, 1, 2, 2]), ...]
     tokens_sentlen_list = [None] * len(sents)
     sent_lens = []
+    unk_ix = w2ix['<UNK>']
     for i, sent in enumerate(sents):
         if len(sent) > allowable_len:
             n_truncated += 1
             sent = sent[:allowable_len]
         unpadded_tokens = (
             [w2ix['<SOS>']] +
-            [w2ix.get(w, '<UNK>') for w in sent] +
+            [w2ix.get(w, unk_ix) for w in sent] +
             [w2ix['<EOS>']]
         )
         sent_len = len(unpadded_tokens)

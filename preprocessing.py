@@ -13,9 +13,11 @@ import tqdm
 
 import model_utils as mu
 
-from collections import namedtuple, OrderedDict
+from collections import OrderedDict
+from collections import namedtuple
 from itertools import izip
 from sklearn.model_selection import train_test_split
+
 
 
 log = logging.getLogger(__name__)
@@ -213,7 +215,9 @@ def _iter_file_sent_tokens(
                     'text': u' '.join(map(unicode, sent)),
                     'tokens': tokens,
                     'review_id': review_dict['review_id'],
-                    'sent_len': min(max_len, len(sent)),
+                    # Plus 2 because we are including the <SOS> and
+                    # <EOS>.
+                    'sent_len': min(max_len, len(sent) + 2),
                     'ixs': [lang.w2ix.get(t, unk_ix) for t in tokens],
                 }
 

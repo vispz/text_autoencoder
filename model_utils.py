@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+"""Contains model training utils and to convert sentences to indices.
+"""
 import cPickle as pickle
 import logging
 
@@ -16,7 +18,16 @@ IS_CUDA = tc.cuda.is_available()
 print 'is_cuda:', IS_CUDA
 
 LstmHidden = namedtuple('LstmHidden', ('h', 'c'))
-BatchSentIxs = namedtuple('BatchSentIxs', ['seqs', 'lengths'])
+
+
+class BatchSentIxs(namedtuple('BatchSentIxs', ['seqs', 'lengths'])):
+
+    def __len__(self):
+        return len(self.seqs)
+
+########################################################################
+#                   Model training
+########################################################################
 
 
 class SentDataset(tc_data_utils.Dataset):
@@ -80,6 +91,15 @@ def to_dataloader(
         **kwargs
     )
 
+def save_model(model, path):
+    with open(path, 'wb') as outfile:
+        pickle.dump(model, outfile, pickle.HIGHEST_PROTOCOL)
+
+
+def load_model(path):
+    with open(path, 'rb') as infile:
+        return pickle.load(infile)
+
 
 def build_embedding(vocab_size, embed_dim, embedding, embedding_matrix):
     if embedding is not None:
@@ -90,7 +110,53 @@ def build_embedding(vocab_size, embed_dim, embedding, embedding_matrix):
     return embedding
 
 
+def plot_loss(losses):
+    plt.figure()
+    plt.plot(losses)
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.title('Losses over epochs for GD.')
+    plt.show()
+
+
+########################################################################
+#                   Sentence representation
+########################################################################
+
 def seqs2var(seqs, lengths):
+    """Given a list of list of indices and lengths create BatchSentIxs
+
+    :param seqs: List of list of indices of the embedding matrix
+    :type seqs: list(list(int)) or array(array(int))
+    :param lengths: The actual length of the padded sentences.
+    :type lengths: list(int) or array(int)
+
+    :returns: BatchSentIxs sorted in descending order of the sent
+        length as this is expected by the rnn.utils
+        pack_padded_sequence.
+
+    Sample Usage::
+
+        print seqs2var(
+            seqs=[
+                [0, 3, 5, 7, 8, 1, 2, 2],
+                [0, 3, 4, 4, 8, 1, 2, 2],
+            ],
+            lengths=[4,4],
+        )
+
+    Sample Output::
+
+        BatchSentIxs(
+            seqs=Variable containing:
+                0     3     5     7     8     1     2     2
+                0     3     4     4     8     1     2     2
+                [torch.LongTensor of size 2x8]
+            ,
+            lengths=(4, 4),
+        )
+    """
+    assert isinstance(seqs[0][0], int)
     # The data is passed in. We assume that
     #    BatchSentIxs(seqs=np.array, lengths=np.array)
     # The padded sequence should in sorted in reversed
@@ -105,11 +171,17 @@ def seqs2var(seqs, lengths):
 
 def sents2var(sents, w2ix=None, max_sent_len=None):
     """Function to convert a batch of sentences into padded input variable.
+
+    :param sents: List of list of words (str). If BatchSentIxs
+        we reutrn as is.
     """
     if isinstance(sents, BatchSentIxs):
         return sents
-    if isinstance(sents[0], str):
+    if isinstance(sents[0], (str, unicode)):
         sents = [sents]
+    # Make sure that we did not pass in the indexes of the w2v and
+    #   we passed in the words
+    assert isinstance(sents[0][0], (str, unicode))
     sent_lens, tokens_list = _sents2ixs(
         sents=sents,
         w2ix=w2ix,
@@ -159,20 +231,43 @@ def _sents2ixs(sents, w2ix, max_sent_len):
     return sent_lens, tokens_list
 
 
-def plot_loss(losses):
-    plt.figure()
-    plt.plot(losses)
-    plt.xlabel('Epochs')
-    plt.ylabel('Loss')
-    plt.title('Losses over epochs for GD.')
-    plt.show()
+def batch_ixs_to_sents(batch_sent_ixs, lang):
+    """BatchSentIxs to sentences.
 
+    Sample Usage::
+        x = BatchSentIxs(
+            seqs=Variable containing:
+                0     4     5     7     9     1     2     2
+                0     4     5     3     9     1     2     2
+            [torch.LongTensor of size 2x8]
+            ,
+            lengths=(4, 4)
+        )
+        w2v_data.lang.ix2w = OrderedDict([(0, '<SOS>'),
+             (1, '<EOS>'),
+             (2, '<PADDING>'),
+             (3, '<UNK>'),
+             (4, 'i'),
+             (5, 'love'),
+             (6, 'ham'),
+             (7, 'pizza'),
+             (8, 'dragons'),
+             (9, '.')])
+        print batch_ixs_to_sents(d['dev'], lang=w2v_data.lang)
 
-def save_model(model, path):
-    with open(path, 'wb') as outfile:
-        pickle.dump(model, outfile, pickle.HIGHEST_PROTOCOL)
+    Sample Output::
 
-
-def load_model(path):
-    with open(path, 'rb') as infile:
-        return pickle.load(infile)
+        [['<SOS>', 'i', 'love', 'pizza', '.', '<EOS>'],
+         ['<SOS>', 'i', 'love', '<UNK>', '.', '<EOS>']]
+    """
+    return [
+        [
+            lang.ix2w[ix.data[0]]
+            # Extra 2 chars for <SOS> and <EOS>
+            for ix in ixs[:length + 2]
+        ]
+        for ixs, length in zip(
+            batch_sent_ixs.seqs,
+            batch_sent_ixs.lengths,
+        )
+    ]

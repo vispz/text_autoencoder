@@ -7,6 +7,7 @@ import torch.nn.utils.rnn as rnn_utils
 import model_utils as mu
 
 from torch import nn
+
 from collections import namedtuple
 
 
@@ -150,7 +151,7 @@ def pull_last_hidden(hidden, num_layers, num_dir):
 
 def _pull_last_hidden_helper(h, num_layers, num_dir):
     _, batch_size, hidden_dim = h.size()
-    return h[(num_layers-1)*num_dir:].transpose(
-        dim0=0,
-        dim1=1,
-    ).resize(batch_size, num_dir*hidden_dim)
+    return h[(num_layers-1) * num_dir:].transpose(0, 1).resize(
+        batch_size,
+        num_dir * hidden_dim,
+    )

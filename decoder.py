@@ -9,6 +9,7 @@ import torch.autograd as ag
 import model_utils as mu
 
 from torch import nn
+
 from collections import namedtuple
 
 

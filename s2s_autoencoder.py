@@ -54,7 +54,8 @@ import encoder
 import decoder
 import model_utils as mu
 
-from collections import namedtuple, OrderedDict
+from collections import OrderedDict
+from collections import namedtuple
 from itertools import chain
 
 
@@ -179,7 +180,7 @@ class Seq2SeqAutoEncoder(nn.Module):
         #     min_lr=1e-10,
         #     eps=1e-08,
         # )
-        self.loss_fn = nn.NLLLoss()
+        self.loss_fn = nn.NLLLoss(size_average=False)
         self.eval_fns = [compute_accuracy] if eval_fns is None else eval_fns
 
     def forward(
@@ -232,8 +233,8 @@ class Seq2SeqAutoEncoder(nn.Module):
     def encode_sentences(self, sents):
         """Gives the embedding for a list of sentences
 
-        :param sents: A list of sentence tokens.
-        :type sents: list(list(str))
+        :param sents: A list of sentence tokens or the sent ixs.
+        :type sents: list(list(str)) or BatchSentIxs
 
         :returns: Sentence embeddings for all the sentences.
             Dim -> (len(sents), enc_hidden_dim*(enc_bidirectional+1))
@@ -244,6 +245,14 @@ class Seq2SeqAutoEncoder(nn.Module):
             encoder_fwd_func=self.encoder.forward,
             sents2var_func=self.sents2var,
         )
+
+    def encode_and_decode_sentences(self, sents):
+        return self.decode_sentences(
+            enc_hiddens=self.encode_sentences(sents=sents),
+        )
+
+    def set_lr(self, lr):
+        self.optimizer.lr = lr
 
 
 def s2s_forward(
@@ -277,6 +286,7 @@ def s2s_fit(
     epochs=1,
     teacher_forcing=0.5,
     tb_expt=None,
+    print_epoch_results=True,
 ):
     """
     s2s_model: :class:`Seq2SeqAutoEncoder`
@@ -298,6 +308,7 @@ def s2s_fit(
             epoch_stats=epoch_stats,
             tb_expt=tb_expt,
             epoch_num=epoch_num,
+            print_epoch_results=print_epoch_results,
         )
         epoch_stats_list.append(epoch_stats)
         # TODO: Dont do any lr decay
@@ -327,7 +338,7 @@ def run_epoch(s2s_model, dataloader, teacher_forcing):
         for s in DATASET_SPLITS
     }
     grad_by_wts = []
-    for train_dev_batch in tqdm.tqdm_notebook(dataloader, desc='Batches'):
+    for train_dev_batch in dataloader:#tqdm.tqdm_notebook(dataloader, desc='Batches'):
         for split, batch in train_dev_batch.iteritems():
             # Get data
             batch_sent_ixs = s2s_model.sents2var(sents=batch)
@@ -387,7 +398,7 @@ def _agg_epoch_grad_by_wts(grad_by_wts):
     }
 
 
-def log_losses(epoch_stats, tb_expt, epoch_num):
+def log_losses(epoch_stats, tb_expt, epoch_num, print_epoch_results):
     log_data = {}
     for split, metrics in epoch_stats['split_metrics_map'].iteritems():
         for ident, metric_val in metrics.iteritems():
@@ -395,15 +406,16 @@ def log_losses(epoch_stats, tb_expt, epoch_num):
     for avg_or_std, val in epoch_stats['grad_by_wts'].iteritems():
         log_data['grad_by_wts/{a}'.format(a=avg_or_std)] = val
     tb_expt.add_scalar_dict(log_data)
-    log.info(
-        EPOCHS_RESULT_TEMPL.format(
-            epoch_num=epoch_num,
-            results='\n'.join(
-                '{nm}: {val:,.4f}'.format(nm=nm, val=val)
-                for nm, val in log_data.iteritems()
+    if print_epoch_results:
+        log.info(
+            EPOCHS_RESULT_TEMPL.format(
+                epoch_num=epoch_num,
+                results='\n'.join(
+                    '{nm}: {val:,.4f}'.format(nm=nm, val=log_data[nm])
+                    for nm in sorted(log_data)
+                ),
             ),
-        ),
-    )
+        )
 
 
 def _compute_grad_by_wt(model):
@@ -419,6 +431,7 @@ def _compute_grad_by_wt(model):
 
 
 def s2s_encode_sentences(sents, encoder_fwd_func, sents2var_func):
+    print sents2var_func(sents=sents)
     last_layer = encoder_fwd_func(
         sents=sents2var_func(sents=sents),
     ).h_last_layer
@@ -431,13 +444,15 @@ def s2s_decode_sentences(decoder_fwd_func, enc_hiddens, hidden_dim):
     #     h=enc_hiddens[:,:hidden_dim],
     #     c=enc_hiddens[:,hidden_dim:],
     # )
-    return decoder_fwd_func(
+    x = decoder_fwd_func(
         enc_hidden=enc_hiddens,
         true_sents=None,
         teacher_forcing=None,
         is_training=False,
         ret_output_sents=True,
-    ).output_sents
+    )
+    # print x.seq_chosen_ixs
+    return x.output_sents
 
 
 #####################################################################
@@ -466,7 +481,9 @@ def compute_loss(true_sents, seq_softmaxes, loss_fn, eval_fns):
             true_sents.lengths,
         )
     ):
-        # Why upto -1 ???
+        # sent_len = len('<SOS>', 'this', 'is', 'sentence', '<EOS>')
+        # We skipped <SOS> above. If we include upto `sent_len-1`
+        # We will get loss for ['this', 'is', 'sentence', '<EOS>']
         y_pred_relevant = sent_y_pred[:sent_len-1]
         # Drop the first <SOS> word
         y_true_relevant = sent_true_pred[1:sent_len]
@@ -486,4 +503,6 @@ def compute_accuracy(softmaxes, true_ixs):
     true_ixs: Variable (batch_sz,)
     """
     _, predicted = tc.max(softmaxes, dim=1)
-    return (predicted == true_ixs).type(tc.DoubleTensor).mean()
+    # print 'true_ixs', true_ixs.data.numpy().tolist()
+    # print 'predicted', predicted.data.numpy().tolist()
+    return (predicted == true_ixs).type(tc.DoubleTensor).mean().data[0]
